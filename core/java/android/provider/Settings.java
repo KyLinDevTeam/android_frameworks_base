@@ -2583,6 +2583,12 @@ public final class Settings {
          */
         public static final String NETWORK_TRAFFIC_STATE = "network_traffic_state";
 
+        /**
+         * Show when WiFi or data mobile is sending/receiving data
+         * @hide
+         */
+        public static final String STATUS_BAR_NETWORK_ACTIVITY = "status_bar_network_activity";
+
         /** Sprint MWI Quirk: Show message wait indicator notifications
          * @hide
          */
