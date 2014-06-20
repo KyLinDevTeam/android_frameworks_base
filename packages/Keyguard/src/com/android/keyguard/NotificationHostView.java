@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013 Team AOSPAL
+ * Copyright (C) 2014 The KylinMod OpenSource Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,6 +50,7 @@ import android.widget.RemoteViews;
 import android.widget.ScrollView;
 
 import com.android.internal.statusbar.IStatusBarService;
+import com.android.internal.widget.LockPatternUtils;
 import com.android.keyguard.KeyguardViewMediator.ViewMediatorCallback;
 
 import java.util.ArrayDeque;
@@ -81,6 +83,9 @@ public class NotificationHostView extends FrameLayout {
     private ViewMediatorCallback mViewMediatorCallback;
     private LinearLayout mNotifView;
     private TouchModalScrollView mScrollView;
+
+    private KeyguardSecurityCallback mCallback;
+    private LockPatternUtils mLockPatternUtils;
 
     private Handler mHandler = new Handler(Looper.getMainLooper()) {
         @Override
@@ -134,6 +139,10 @@ public class NotificationHostView extends FrameLayout {
         }
     }
 
+    public void setKeyguardCallback(KeyguardSecurityCallback callback) {
+        mCallback = callback;
+    }
+
     private class NotificationView extends FrameLayout {
         private static final int CLICK_THRESHOLD = 10;
 
@@ -174,24 +183,41 @@ public class NotificationHostView extends FrameLayout {
         }
 
         private void startIntent() {
+            hideAllNotifications();
             PendingIntent i = statusBarNotification.getNotification().contentIntent;
             if (i != null) {
                 try {
                     Intent intent = i.getIntent();
-                    intent.setFlags(
-                        intent.getFlags()
-                        | Intent.FLAG_ACTIVITY_NEW_TASK
-                        | Intent.FLAG_ACTIVITY_SINGLE_TOP
-                        | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                     ActivityManagerNative.getDefault().dismissKeyguardOnNextActivity();
-                    i.send();
-                } catch (CanceledException ex) {
-                    Log.e(TAG, "intent canceled!");
+                    mActivityLauncher.launchActivityForLockscreenNotification(i, intent, false, true, null, null);
                 } catch (RemoteException ex) {
                     Log.e(TAG, "failed to dimiss keyguard!");
                 }
             }
         }
+
+        private final KeyguardActivityLauncher mActivityLauncher = new KeyguardActivityLauncher() {
+
+            @Override
+            KeyguardSecurityCallback getCallback() {
+                return mCallback;
+            }
+
+            @Override
+            LockPatternUtils getLockPatternUtils() {
+                return mLockPatternUtils;
+            }
+
+            @Override
+            protected void dismissKeyguardOnNextActivity() {
+                getCallback().dismiss(false);
+            }
+
+            @Override
+            Context getContext() {
+                return mContext;
+            }
+        };
 
         @Override
         public boolean dispatchTouchEvent(MotionEvent event) {
@@ -247,6 +273,24 @@ public class NotificationHostView extends FrameLayout {
                         longpress = false;
                         break;
                 }
+            } else {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        initialX = event.getX();
+                        delta = initialX - v.getX();
+                        pointerDown = true;
+                        velocityTracker = VelocityTracker.obtain();
+                        break;
+                    case MotionEvent.ACTION_UP:
+                        if (!swipeGesture && !longpress) {
+                            startIntent();
+                        }
+                        velocityTracker.recycle();
+                        swipeGesture = false;
+                        pointerDown = false;
+                        longpress = false;
+                        break;
+                }
             }
             return super.dispatchTouchEvent(event);
         }
@@ -268,7 +312,7 @@ public class NotificationHostView extends FrameLayout {
 
     public NotificationHostView(Context context, AttributeSet attributes) {
         super(context, attributes);
-
+        mLockPatternUtils = new LockPatternUtils(mContext);
         mWindowManager = (WindowManager)mContext.getSystemService(Context.WINDOW_SERVICE);
         mNotificationMinHeight = mContext.getResources().getDimensionPixelSize(R.dimen.notification_min_height);
         mNotificationMinRowHeight = mContext.getResources().getDimensionPixelSize(R.dimen.notification_row_min_height);
@@ -579,7 +623,11 @@ public class NotificationHostView extends FrameLayout {
                 if (mNotifications.size() == 0) {
                     statusBar.setButtonDrawable(0, 0);
                 } else if (mShownNotifications == mNotifications.size()) {
-                    statusBar.setButtonDrawable(0, 2);
+                    if (mNotifications.size() == getNonClearableNotificationCount()) {
+                        statusBar.setButtonDrawable(0, 0);
+                    } else {
+                        statusBar.setButtonDrawable(0, 2);
+                    }
                 } else {
                     statusBar.setButtonDrawable(0, 1);
                 }
@@ -589,6 +637,15 @@ public class NotificationHostView extends FrameLayout {
         }
     }
 
+    private int getNonClearableNotificationCount() {
+        int count = 0;
+        for (NotificationView nv : mNotifications.values()){
+            if (!nv.canBeDismissed()){
+                count++;
+            }
+        }
+        return count;
+    }
     private void animateBackgroundColor(final int targetColor) {
         if (!(getBackground() instanceof ColorDrawable)) {
             setBackgroundColor(0x0);

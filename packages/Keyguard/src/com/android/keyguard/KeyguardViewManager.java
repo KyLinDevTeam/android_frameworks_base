@@ -57,6 +57,7 @@ import android.os.PowerManager;
 import android.os.RemoteException;
 import android.os.SystemClock;
 import android.os.SystemProperties;
+import android.os.UserHandle;
 import android.os.Vibrator;
 import android.provider.Settings;
 import android.util.Log;
@@ -142,11 +143,20 @@ public class KeyguardViewManager {
     }
 
     private void updateSettings() {
-        mLockscreenNotifications = Settings.System.getInt(mContext.getContentResolver(),
-                Settings.System.LOCKSCREEN_NOTIFICATIONS, mLockscreenNotifications ? 1 : 0) == 1;
+        mLockscreenNotifications = Settings.System.getIntForUser(mContext.getContentResolver(),
+                Settings.System.LOCKSCREEN_NOTIFICATIONS, 1, UserHandle.USER_CURRENT_OR_SELF) == 1;
+
+        // FIX: turn off Lockscreen Notification if ActiveDisplay enable
+        boolean mActiveDisplayEnabled = Settings.System.getIntForUser(mContext.getContentResolver(), Settings.System.ENABLE_ACTIVE_DISPLAY, 0,
+                UserHandle.USER_CURRENT_OR_SELF) == 1;
+        if (mLockscreenNotifications && mActiveDisplayEnabled) {
+                Settings.System.putIntForUser(mContext.getContentResolver(), Settings.System.LOCKSCREEN_NOTIFICATIONS, 0, UserHandle.USER_CURRENT_OR_SELF);
+                mLockscreenNotifications = false;
+        }
+
         if(mLockscreenNotifications && mNotificationViewManager == null) {
             mNotificationViewManager = new NotificationViewManager(mContext, this);
-        } else if(!mLockscreenNotifications && mNotificationViewManager != null) {
+        } else if (!mLockscreenNotifications && mNotificationViewManager != null) {
             mNotificationViewManager.unregisterListeners();
             mNotificationViewManager = null;
         }
