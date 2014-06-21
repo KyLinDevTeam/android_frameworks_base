@@ -570,7 +570,6 @@ public class NavigationBarView extends LinearLayout {
         final boolean showCamera = showSearch && !mCameraDisabledByDpm
                 && mLockUtils.getCameraEnabled();
         final boolean showNotifs = showSearch &&
-            Settings.System.getInt(mContext.getContentResolver(),
             Settings.System.getIntForUser(mContext.getContentResolver(),
                         Settings.System.LOCKSCREEN_NOTIFICATIONS, 1, UserHandle.USER_CURRENT_OR_SELF) == 1 &&
                 Settings.System.getIntForUser(mContext.getContentResolver(),
